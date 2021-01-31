@@ -1,2 +1,2 @@
 # cursos
-Neste repositório eu armazeno os projetos desenvolvidos nos cursos que eu realizo.
+In this branch I store my projects while they aren't complete. 
