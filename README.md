@@ -1,2 +1,3 @@
 # courses
-In this Repo I store the projects of all courses I take.
+
+In this repo I store the projects developed in all courses I take.
