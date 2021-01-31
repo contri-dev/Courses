@@ -9,7 +9,7 @@ class UserModel(banco.Model):
 
     def __init__(self, login, senha):
         self.login = login
-        self.senha - senha
+        self.senha = senha
 
     def json(self):
         return {
@@ -20,6 +20,13 @@ class UserModel(banco.Model):
     @classmethod
     def find_user(cls, user_id):
         user = cls.query.filter_by(user_id=user_id).first() #SELECT * FROM # hoteis WHERE hotel_id = hotel_id
+        if user:
+            return user
+        return None
+
+    @classmethod
+    def find_by_login(cls, login):
+        user = cls.query.filter_by(login=login).first()
         if user:
             return user
         return None
