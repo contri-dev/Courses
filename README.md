@@ -1,2 +1,2 @@
-# cursos
-Neste repositório eu armazeno os projetos desenvolvidos nos cursos que eu realizo.
+# Courses
+In this repository I store the projects developed in the courses I take.
