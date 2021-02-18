@@ -1,0 +1,130 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Regressão Logística
+```{r}
+require(knitr)
+```
+
+```{r}
+# Load the textbook R package
+require(ISLR)
+# Load in the credit data
+attach(Default)
+```
+```{r}
+str(Default)
+```
+```{r}
+tmp <- table(default)
+(tmp[[2]]/tmp[[1]])*100
+```
+```{r}
+library(ggplot2);
+library(gridExtra)
+```
+
+```{r}
+x <- qplot(x=balance, y=income, color=default, shape=default, geom='point')+scale_shape(solid=FALSE)
+y <- qplot(x=default, y=balance, fill=default, geom='boxplot')+guides(fill=FALSE)
+z <- qplot(x=default, y=income, fill=default, geom='boxplot')+guides(fill=FALSE)
+# Plot
+x
+```
+### Neste gráfico é possivel perceber que o "balance" tem o maior peso em relação ao "default", a partir de 1500 as pessoas tendem a não pagar. Enquanto o "income" afeta levemente o resultado dos inadimplentes, dado que quanto maior a renda as pessoas tendem a pagar mais, conforme observada a concentração maior de "default.yes" na faixa de 20000 "Income".
+
+```{r}
+grid.arrange(y, z, nrow=1)
+```
+# Modelo Basico
+
+```{r}
+logit <- glm(default ~ balance, data=Default, family='binomial')
+summary(logit)
+
+```
+ 
+### B1 = 0,005. Significa que o saldo está associado a um aumento na probabilidade de "default".Especificamente, um aumento de uma unidade no saldo aumenta as chances de "default" em 0,0055 unidades.
+
+# Variáveis categóricas
+
+```{r}
+# Create a new dummy variable for students
+Default$studentD <- 0
+Default$studentD[Default$student=="Yes"] <- 1
+
+logit <- glm(default ~ studentD, data=Default, family='binomial')
+summary(logit)
+
+```
+### Conclui que estudantes tem mais chance de "default".
+
+# Regressão Logística Multipla
+
+```{r}
+logit <- glm(default ~ income + balance + studentD, family='binomial', data=Default)
+summary(logit)
+
+```
+### Quanto é feita a análise multipla, os estudantes tendem terem o "Default" menor que os não estudantes. (?)
+
+## Logistic Regression for > 2 Response Classes
+# Example 1: College Admissions
+
+```{r}
+library(ISLR)
+str(Smarket)
+```
+# Correlação menos a variável de direção:
+```{r}
+cor(Smarket[,-9])
+```
+
+### Observamos que não existe correlação entre os "lags" e a variável "Today", entretando há alta correlação entre "Volume" e "Year", indicando que o volume aumenta com o tempo
+
+```{r}
+attach(Smarket)
+plot(Volume)
+```
+#Divisão entre treino e teste para regressão logistica
+
+```{r}
+# Split data into testing and training
+train<-Smarket[Year<2005,]
+test<-Smarket[Year==2005,]
+```
+```{r}
+library(caret)
+```
+# Criação do modelo
+```{r}
+logit <- glm(Direction ~ Lag1+Lag2+Lag3, family='binomial', data=train)
+summary(logit)
+```
+# Teste do modelo
+
+```{r}
+test.probs <-predict(logit, test, type='response')
+pred.logit <- rep('Down',length(test.probs))
+pred.logit[test.probs>=0.5] <- 'Up'
+
+table(pred.logit, test$Direction)
+```
+```{r}
+confusionMatrix(table(test$Direction, pred.logit)) 
+```
+
+```{r}
+modelFit<- train(Direction~Lag1+Lag2+Lag3, method='glm',preProcess=c('scale', 'center'), data=train, family=binomial(link='logit'))
+
+summary(modelFit)
+```
+```{r}
+confusionMatrix(test$Direction, predict(modelFit, test))
+```
+## Precisão geral de 59%, 78% de precisão em dias 'Up'. Os modelos defasados do mercado de ações não são o melhor indicador de desempenho.
+
