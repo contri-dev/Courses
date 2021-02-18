@@ -1,0 +1,27 @@
+---
+title: "Using tidymodels to Predict Health Insurance Cost"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Importação das Bibliotecas
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(data.table)
+
+```
+
+# Lendo o Dataset
+```{r}
+download.file("https://raw.githubusercontent.com/stedy/Machine-Learning-with-R-datasets/master/insurance.csv", 
+              "insurance.csv")
+insur_dt <- fread("insurance.csv")
+```
+# Listando as colunas do dataset
+```{r}
+insur_dt %>% colnames()
+```
+
+

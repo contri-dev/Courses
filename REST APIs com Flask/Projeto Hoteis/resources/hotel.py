@@ -1,5 +1,6 @@
 from flask_restful import Resource, reqparse
 from models.hotel import HotelModel
+from resources.filtros import *
 from flask_jwt_extended import jwt_required
 import sqlite3
 
@@ -51,17 +52,11 @@ class Hoteis(Resource):
         parametros = normalize_path_params(**dados_validos)
 
         if not parametros.get('cidade'):
-            consulta= "SELECT * FROM hoteis \
-            WHERE (estrelas >= ? and estrelas <= ?)\
-            and (diaria >= ? and diaria <= ?)\
-            LIMIT ? OFFSET ?"
+            consulta= consulta_sem_cidade
             tupla = tuple([parametros[chave] for chave in parametros])
             resultado = cursor.execute(consulta, tupla)
         else:
-            consulta = "SELECT * FROM hoteis \
-            WHERE (estrelas >= ? and estrelas <= ?)\
-            and (diaria >= ? and diaria <= ?)\
-            and cidade = ? LIMIT ? OFFSET ?"
+            consulta = consulta_com_cidade
             tupla = tuple([parametros[chave] for chave in parametros])
             resultado = cursor.execute(consulta, tupla)
         hoteis = []
@@ -71,7 +66,8 @@ class Hoteis(Resource):
             'nome': linha[1],
             'estrelas': linha[2],
             'diaria': linha[3],
-            'cidade': linha[4]
+            'cidade': linha[4],
+            'site_id': linha[5]
             })
 
         return {'hoteis': hoteis}
@@ -82,6 +78,7 @@ class Hotel(Resource):
     argumentos.add_argument('estrelas', type=float, required=True, help="The field 'estrelas' cannot be left blank")
     argumentos.add_argument('diaria')
     argumentos.add_argument('cidade')
+    argumentos.add_argument('site_id', type=int, required=True, help="Every hotel needs to be linked to a site")
 
     def get(self, hotel_id):
         hotel = HotelModel.find_hotel(hotel_id)

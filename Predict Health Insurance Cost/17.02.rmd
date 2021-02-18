@@ -1,0 +1,277 @@
+---
+title: "Using tidymodels to Predict Health Insurance Cost"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Importação das Bibliotecas
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(data.table)
+library(skimr)
+library(GGally)
+library(kknn)
+```
+
+# Lendo o Dataset
+```{r}
+download.file("https://raw.githubusercontent.com/stedy/Machine-Learning-with-R-datasets/master/insurance.csv", 
+              "insurance.csv")
+insur_dt <- fread("insurance.csv")
+```
+# Colunas do dataset
+```{r}
+insur_dt %>% colnames()
+```
+# Descrição estatística da coluna "age" (idade)
+```{r}
+insur_dt$age %>% summary()
+```
+
+# Distribuição referente à coluna "sex" (sexo)
+```{r}
+insur_dt$sex %>% table()
+```
+# Descrição estatística da coluna "bmi" (Índice  de massa corporal)
+```{r}
+insur_dt$bmi %>% summary()
+```
+# Distribuição referente à coluna "smoker" (fumante)
+```{r}
+insur_dt$smoker %>% table()
+```
+
+# Descrição estatística da coluna "charges" (valor do seguro)
+```{r}
+insur_dt$charges %>% summary()
+```
+# Análise Exploratória de dados
+
+```{r}
+skimr::skim(insur_dt)
+```
+# Distribuição da tabela "children" (Numero de filhos)
+```{r}
+table(insur_dt$children)
+```
+
+## Utilização do pacote GGally, que facilita o processo de EDA gerando automaticamente ggplots com as variáveis do dataframe.
+
+```{r}
+options(repr.plot.width=15, repr.plot.height = 10)
+insur_dt %>%
+    select(age, bmi, children, smoker, region, charges) %>%
+    GGally::ggpairs(mapping = aes(color = region))
+```
+
+# Mapa de relacionamento entre idade e valores de seguro pelas 4 regiões.
+
+```{r}
+insur_dt %>% ggplot(aes(color = region)) + facet_wrap(~ region)+
+  geom_point(mapping = aes(x = age, y = charges))
+```
+
+## É possivel analisar que o preço fica próximo à linha do eixo X, aumentando levemente com a idade.
+
+# Vamos para o fator que provavelmente mais irá impactar na cobertura do seguro de saúde: Smoker(fumante).
+```{r}
+insur_dt %>%
+    select(smoker, bmi, charges) %>%
+    ggplot(aes(color = smoker)) +
+    geom_point(mapping = aes(x = bmi, y = charges))
+```
+
+## É possivel observar uma diferença marcante do preço dos que fumam para os que não fumam e tende a aumentar mais ainda em relação ao peso.
+
+# Plot do peso em relação ao custo, evidênciando a faixa etária
+
+```{r}
+insur_dt$age_bins <- cut(insur_dt$age,
+                breaks = c(18,20,30,40,50,60,70,80,90),
+                include.lowest = TRUE,
+                right = TRUE)
+insur_dt %>%
+    select(bmi, charges, sex, age_bins) %>%
+    ggplot(aes(color = age_bins)) +
+    geom_point(mapping = aes(x = bmi, y = charges))
+
+```
+
+
+## É nítido que a idade impacta fortemente no valor, porém não parece interagir com o "bmi" ou "smoker", isso significa que a idade afeta o valor independentemente.
+
+# Análise dos filhos.
+```{r}
+insur_dt %>%
+    select(children, charges, sex) %>%
+    ggplot(aes(x = children, y = charges, group = children)) +
+    geom_boxplot(outlier.alpha = 0.5, aes(fill = children)) +
+    theme(legend.position = "none")
+
+```
+
+
+## A quantidade de filhos não afeta o valor significantemente.
+
+# Criação do Modelo
+
+### Primeiro é feita a divisão train/test, estratificando a coluna "smoker" por questões de equilibrio. "?"
+
+```{r}
+set.seed(123)
+insur_split <- initial_split(insur_dt, strata = smoker)
+insur_train <- training(insur_split)
+insur_test <- testing(insur_split)
+# we are going to do data processing and feature engineering with recipes
+# below, we are going to predict charges using everything else(".")
+insur_rec <- recipe(charges ~ bmi + age + smoker, data = insur_train) %>%
+    step_dummy(all_nominal()) %>% #Criação de dummies para variáveis categóricas.
+    step_normalize(all_numeric(), -all_outcomes()) %>% #Normalização dos dados
+    step_interact(terms = ~ bmi:smoker_yes) #Termo de interação bmi e smoker_yes "?"
+test_proc <- insur_rec %>% prep() %>% bake(new_data = insur_test)
+```
+
+# KNN - k-Nearest Neighbors
+
+```{r}
+
+knn_spec <- nearest_neighbor(neighbors = 10) %>%
+    set_engine("kknn") %>%
+    set_mode("regression")
+knn_fit <- knn_spec %>%
+    fit(charges ~ age + bmi + smoker_yes + bmi_x_smoker_yes,
+        data = juice(insur_rec %>% prep()))
+## Warning: partial match of 'object' to 'objects'
+## Warning: partial match of 'object' to 'objects'
+insur_wf <- workflow() %>%
+    add_recipe(insur_rec) %>%
+    add_model(knn_spec)
+
+```
+# Avaliação do modelo
+
+```{r}
+insur_cv <- vfold_cv(insur_train, prop = 0.9)
+
+insur_rsmpl <- fit_resamples(insur_wf,
+                           insur_cv,
+                           control = control_resamples(save_pred = TRUE))
+```
+
+
+```{r}
+insur_rsmpl %>% collect_metrics()
+```
+### RMSE (root-mean-square error) Quer dizer que as previsões variam dos valores observador por uma medida absoluta de 4.945.
+
+### RSQ(R²) Sugere que a regressão tem um ajuste de ~82%.
+
+# Demonstração do ajuste de regressão em uma linha:
+
+```{r}
+insur_rsmpl %>%
+    unnest(.predictions) %>%
+    ggplot(aes(charges, .pred, color = id)) + 
+    geom_abline(lty = 2, color = "gray80", size = 1.5) + 
+    geom_point(alpha = 0.5) + 
+    theme(legend.position = "none")
+```
+
+
+# Aplicação do Modelo aos dados de teste definidos anteriormente.
+
+```{r}
+insur_test_res <- predict(knn_fit, new_data = test_proc %>% select(-charges))
+## Warning: partial match of 'fit' to 'fitted.values'
+insur_test_res <- bind_cols(insur_test_res, insur_test %>% select(charges))
+insur_test_res
+
+```
+```{r}
+ggplot(insur_test_res, aes(x = charges, y = .pred)) +
+  # Create a diagonal line:
+  geom_abline(lty = 2) +
+  geom_point(alpha = 0.5) +
+  labs(y = "Predicted Charges", x = "Charges") +
+  # Scale and size the x- and y-axis uniformly:
+  coord_obs_pred()
+```
+
+
+# Comparação:
+```{r}
+rmse(insur_test_res, truth = charges, estimate = .pred)
+
+insur_rsmpl %>% 
+    collect_metrics()
+```
+### O RMSE Gerado pelos dados de teste é insignificantemente diferente daquele gerado pelo modelo KNN. Significa que o modelo pode reproduzir previsões de forma confiável.
+
+# Regressão Linear
+
+```{r}
+lm_spec <- linear_reg() %>% 
+    set_engine("lm")
+lm_fit <- lm_spec %>%
+    fit(charges ~ age + bmi + smoker_yes + bmi_x_smoker_yes,
+        data = juice(insur_rec %>% prep()))
+## Warning: partial match of 'object' to 'objects'
+## Warning: partial match of 'object' to 'objects'
+insur_lm_wf <- workflow() %>%
+    add_recipe(insur_rec) %>%
+    add_model(lm_spec)
+```
+
+# Validação do modelo
+```{r}
+insur_lm_rsmpl <- fit_resamples(insur_lm_wf,
+                           insur_cv,
+                           control = control_resamples(save_pred = TRUE))
+
+insur_lm_rsmpl %>% 
+    collect_metrics()
+
+insur_rsmpl %>% 
+    collect_metrics()
+
+```
+## Comparando os dois modelos é possivel observar que o de regressão linear é ainda melhor que o KNN, tanto em RMSE quanto em R².
+
+```{r}
+insur_test_lm_res <- predict(lm_fit, new_data = test_proc %>% select(-charges))
+insur_test_lm_res <- bind_cols(insur_test_lm_res, insur_test %>% select(charges))
+insur_test_lm_res
+```
+## Visualização gráfica da regressão linear
+```{r}
+ggplot(insur_test_lm_res, aes(x = charges, y = .pred)) +
+  # Create a diagonal line:
+  geom_abline(lty = 2) +
+  geom_point(alpha = 0.5) +
+  labs(y = "Predicted Charges", x = "Charges") +
+  # Scale and size the x- and y-axis uniformly:
+  coord_obs_pred()
+```
+
+
+# Comparação entre os dois métodos:
+```{r}
+combind_dt <- mutate(insur_test_lm_res,
+      lm_pred = .pred,
+      charges = charges
+      ) %>% select(-.pred) %>%
+    add_column(knn_pred = insur_test_res$.pred)
+ggplot(combind_dt, aes(x = charges)) +
+    geom_line(aes(y = knn_pred, color = "kNN Fit"), size = 1) +
+    geom_line(aes(y = lm_pred, color = "lm Fit"), size = 1) +
+    geom_point(aes(y = knn_pred, alpha = 0.5), color = "#F99E9E") +
+    geom_point(aes(y = lm_pred, alpha = 0.5), color = "#809BF4") +
+    geom_abline(size = 0.5, linetype = "dashed") +
+    xlab('Charges') +
+    ylab('Predicted Charges') +
+    guides(alpha = FALSE)
+```
+
+
